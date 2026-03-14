@@ -1,0 +1,284 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Organizations ────────────────────────────────────────────────────────────
+
+enum OrganizationStatus {
+  active
+  suspended
+  cancelled
+}
+
+model Organization {
+  id                     String             @id @default(uuid()) @db.Uuid
+  name                   String             @db.VarChar(255)
+  slug                   String             @unique @db.VarChar(100)
+  status                 OrganizationStatus @default(active)
+  settings               Json               @default("{}")
+  subscription_plan      String             @default("trial") @db.VarChar(50)
+  subscription_expires_at DateTime?         @db.Timestamptz
+  created_at             DateTime           @default(now()) @db.Timestamptz
+  updated_at             DateTime           @updatedAt @db.Timestamptz
+
+  // Relations
+  admin_users          AdminUser[]
+  loyalty_customers    LoyaltyCustomer[]
+  loyalty_rewards      LoyaltyReward[]
+  loyalty_orders       LoyaltyOrder[]
+  reward_redemptions   RewardRedemption[]
+  loyalty_transactions LoyaltyTransaction[]
+  audit_logs           AuditLog[]
+
+  @@map("organizations")
+}
+
+// ─── Admin Users ──────────────────────────────────────────────────────────────
+
+enum AdminUserRole {
+  super_admin
+  admin
+  manager
+  staff
+}
+
+model AdminUser {
+  id              String        @id @default(uuid()) @db.Uuid
+  organization_id String        @db.Uuid
+  email           String        @db.VarChar(255)
+  password_hash   String        @db.VarChar(255)
+  name            String        @db.VarChar(255)
+  role            AdminUserRole @default(staff)
+  is_active       Boolean       @default(true)
+  last_login_at   DateTime?     @db.Timestamptz
+  created_at      DateTime      @default(now()) @db.Timestamptz
+  updated_at      DateTime      @updatedAt @db.Timestamptz
+
+  // Relations
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  @@unique([organization_id, email])
+  @@index([organization_id])
+  @@index([email])
+  @@map("admin_users")
+}
+
+// ─── Loyalty Customers ────────────────────────────────────────────────────────
+
+model LoyaltyCustomer {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organization_id     String   @db.Uuid
+  external_id         String?  @db.VarChar(255)
+  phone_number        String   @db.VarChar(30)
+  full_name           String?  @db.VarChar(255)
+  email               String?  @db.VarChar(255)
+  birth_date          DateTime? @db.Date
+  total_points        Int      @default(0)
+  total_visits        Int      @default(0)
+  total_spent         Decimal  @default(0) @db.Decimal(12, 2)
+  tier                String   @default("bronze") @db.VarChar(50)
+  is_active           Boolean  @default(true)
+  opted_in_marketing  Boolean  @default(false)
+  raw_data            Json     @default("{}")
+  created_at          DateTime @default(now()) @db.Timestamptz
+  updated_at          DateTime @updatedAt @db.Timestamptz
+
+  // Relations
+  organization         Organization         @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  loyalty_orders       LoyaltyOrder[]
+  reward_redemptions   RewardRedemption[]
+  loyalty_transactions LoyaltyTransaction[]
+
+  @@unique([organization_id, phone_number])
+  @@index([organization_id])
+  @@index([phone_number])
+  @@map("loyalty_customers")
+}
+
+// ─── Loyalty Rewards ──────────────────────────────────────────────────────────
+
+enum RewardType {
+  discount
+  free_item
+  cashback
+  points_multiplier
+  custom
+}
+
+model LoyaltyReward {
+  id               String     @id @default(uuid()) @db.Uuid
+  organization_id  String     @db.Uuid
+  name             String     @db.VarChar(255)
+  description      String?    @db.Text
+  type             RewardType
+  points_required  Int
+  value            Decimal    @db.Decimal(10, 2)
+  is_active        Boolean    @default(true)
+  valid_from       DateTime?  @db.Timestamptz
+  valid_until      DateTime?  @db.Timestamptz
+  max_redemptions  Int?
+  redemption_count Int        @default(0)
+  metadata         Json       @default("{}")
+  created_at       DateTime   @default(now()) @db.Timestamptz
+  updated_at       DateTime   @updatedAt @db.Timestamptz
+
+  // Relations
+  organization       Organization       @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  reward_redemptions RewardRedemption[]
+
+  @@index([organization_id])
+  @@index([organization_id, is_active])
+  @@map("loyalty_rewards")
+}
+
+// ─── Loyalty Orders ───────────────────────────────────────────────────────────
+
+enum OrderStatus {
+  pending
+  completed
+  cancelled
+  refunded
+}
+
+enum OrderSource {
+  pos
+  online
+  app
+  import
+  manual
+}
+
+model LoyaltyOrder {
+  id               String      @id @default(uuid()) @db.Uuid
+  organization_id  String      @db.Uuid
+  customer_id      String?     @db.Uuid
+  external_order_id String?    @db.VarChar(255)
+  order_date       DateTime    @db.Timestamptz
+  subtotal         Decimal     @db.Decimal(12, 2)
+  discount_amount  Decimal     @default(0) @db.Decimal(12, 2)
+  tax_amount       Decimal     @default(0) @db.Decimal(12, 2)
+  total_amount     Decimal     @db.Decimal(12, 2)
+  points_earned    Int         @default(0)
+  status           OrderStatus @default(completed)
+  source           OrderSource @default(pos)
+  raw_data         Json        @default("{}")
+  created_at       DateTime    @default(now()) @db.Timestamptz
+  updated_at       DateTime    @updatedAt @db.Timestamptz
+
+  // Relations
+  organization         Organization         @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  customer             LoyaltyCustomer?     @relation(fields: [customer_id], references: [id])
+  reward_redemptions   RewardRedemption[]
+  loyalty_transactions LoyaltyTransaction[]
+
+  @@index([organization_id])
+  @@index([organization_id, customer_id])
+  @@index([organization_id, order_date])
+  @@map("loyalty_orders")
+}
+
+// ─── Reward Redemptions ───────────────────────────────────────────────────────
+
+enum RedemptionStatus {
+  pending
+  applied
+  cancelled
+  expired
+}
+
+model RewardRedemption {
+  id              String           @id @default(uuid()) @db.Uuid
+  organization_id String           @db.Uuid
+  customer_id     String           @db.Uuid
+  reward_id       String           @db.Uuid
+  order_id        String?          @db.Uuid
+  points_spent    Int
+  status          RedemptionStatus @default(pending)
+  redeemed_at     DateTime?        @db.Timestamptz
+  expires_at      DateTime?        @db.Timestamptz
+  metadata        Json             @default("{}")
+  created_at      DateTime         @default(now()) @db.Timestamptz
+  updated_at      DateTime         @updatedAt @db.Timestamptz
+
+  // Relations
+  organization         Organization         @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  customer             LoyaltyCustomer      @relation(fields: [customer_id], references: [id])
+  reward               LoyaltyReward        @relation(fields: [reward_id], references: [id])
+  order                LoyaltyOrder?        @relation(fields: [order_id], references: [id])
+  loyalty_transactions LoyaltyTransaction[]
+
+  @@index([organization_id])
+  @@index([organization_id, customer_id])
+  @@map("reward_redemptions")
+}
+
+// ─── Loyalty Transactions (append-only) ──────────────────────────────────────
+
+enum TransactionType {
+  earn
+  redeem
+  expire
+  adjust
+  referral
+  bonus
+  refund
+}
+
+model LoyaltyTransaction {
+  id              String          @id @default(uuid()) @db.Uuid
+  organization_id String          @db.Uuid
+  customer_id     String          @db.Uuid
+  order_id        String?         @db.Uuid
+  redemption_id   String?         @db.Uuid
+  type            TransactionType
+  points          Int
+  balance_before  Int
+  balance_after   Int
+  description     String?         @db.Text
+  created_at      DateTime        @default(now()) @db.Timestamptz
+
+  // Relations
+  organization Organization      @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  customer     LoyaltyCustomer   @relation(fields: [customer_id], references: [id])
+  order        LoyaltyOrder?     @relation(fields: [order_id], references: [id])
+  redemption   RewardRedemption? @relation(fields: [redemption_id], references: [id])
+
+  @@index([organization_id])
+  @@index([organization_id, customer_id])
+  @@index([organization_id, created_at])
+  @@map("loyalty_transactions")
+}
+
+// ─── Audit Log (append-only) ──────────────────────────────────────────────────
+
+model AuditLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  actor_id        String?  @db.Uuid
+  actor_type      String   @default("admin") @db.VarChar(50)
+  action          String   @db.VarChar(100)
+  resource_type   String   @db.VarChar(100)
+  resource_id     String?  @db.VarChar(255)
+  old_value       Json?
+  new_value       Json?
+  ip_address      String?  @db.VarChar(45)
+  user_agent      String?  @db.Text
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  // Relations
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id])
+  @@index([organization_id, resource_type, resource_id])
+  @@index([organization_id, created_at])
+  @@map("audit_log")
+}
