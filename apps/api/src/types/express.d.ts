@@ -6,6 +6,12 @@ declare global {
     interface Request {
       user?: JwtPayload;
       orgId?: string;
+      file?: {
+        buffer: Buffer;
+        originalname?: string;
+        mimetype?: string;
+        size?: number;
+      };
     }
   }
 }

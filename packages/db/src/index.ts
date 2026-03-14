@@ -17,3 +17,5 @@ export type {
   TransactionType,
   Prisma,
 } from '@prisma/client';
+
+export { prisma, prisma as db, connectDB, disconnectDB } from './client';
