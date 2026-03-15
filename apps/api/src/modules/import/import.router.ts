@@ -1,13 +1,14 @@
 import { Router } from 'express';
+import type { Router as ExpressRouter } from 'express';
+import multer from 'multer';
 import { importController } from './import.controller';
 
-export const importRouter = Router();
+export const importRouter: ExpressRouter = Router();
 
-// POST /api/v1/import/orders
-importRouter.post('/orders', importController.importOrders);
+const maxSizeMB = Number(process.env['UPLOAD_MAX_SIZE_MB'] ?? 10);
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: maxSizeMB * 1024 * 1024 },
+});
 
-// GET /api/v1/import/jobs
-importRouter.get('/jobs', importController.listJobs);
-
-// GET /api/v1/import/jobs/:jobId
-importRouter.get('/jobs/:jobId', importController.getJob);
+importRouter.post('/orders', upload.single('file'), importController.importOrders);

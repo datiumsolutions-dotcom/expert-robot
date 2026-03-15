@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import type { Router as ExpressRouter } from 'express';
 import { redemptionsController } from './redemptions.controller';
 
-export const redemptionsRouter = Router();
+export const redemptionsRouter: ExpressRouter = Router();
 
 // GET /api/v1/redemptions
 redemptionsRouter.get('/', redemptionsController.list);

@@ -5,22 +5,21 @@ import { successResponse } from '@loyalty/utils';
 export const importController = {
   async importOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const job = await importService.enqueueOrderImport(req.orgId!, req.body as Record<string, unknown>);
-      res.status(202).json(successResponse(job));
-    } catch (err) { next(err); }
-  },
+      if (!req.file) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'MISSING_FILE',
+            message: 'CSV file is required',
+          },
+        });
+        return;
+      }
 
-  async listJobs(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const jobs = await importService.listJobs(req.orgId!);
-      res.json(successResponse(jobs));
-    } catch (err) { next(err); }
-  },
-
-  async getJob(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const job = await importService.getJob(req.orgId!, req.params['jobId']!);
-      res.json(successResponse(job));
-    } catch (err) { next(err); }
+      const report = await importService.processCSV(req.orgId!, req.file.buffer);
+      res.status(200).json(successResponse(report));
+    } catch (err) {
+      next(err);
+    }
   },
 };
