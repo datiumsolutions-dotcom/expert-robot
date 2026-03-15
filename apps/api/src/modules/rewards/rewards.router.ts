@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import type { Router as ExpressRouter } from 'express';
 import { rewardsController } from './rewards.controller';
 
-export const rewardsRouter = Router();
+export const rewardsRouter: ExpressRouter = Router();
 
 // GET /api/v1/rewards
 rewardsRouter.get('/', rewardsController.list);

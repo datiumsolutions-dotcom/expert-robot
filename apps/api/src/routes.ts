@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Router as ExpressRouter } from 'express';
 
 import { authRouter } from './modules/auth/auth.router';
 import { adminRouter } from './modules/admin/admin.router';
@@ -11,7 +12,7 @@ import { auditRouter } from './modules/audit/audit.router';
 import { authenticate } from './middleware/auth';
 import { orgIsolation } from './middleware/orgIsolation';
 
-export const router = Router();
+export const router: ExpressRouter = Router();
 
 // Health (public)
 router.get('/health', (_req, res) => {

@@ -1,5 +1,13 @@
+jest.mock('@loyalty/db/src/client', () => ({ prisma: {} }));
+
+jest.mock('multer', () => {
+  const m = () => ({ single: () => (_req: unknown, _res: unknown, next: (err?: unknown) => void) => next() });
+  (m as unknown as { memoryStorage: () => Record<string, never> }).memoryStorage = () => ({});
+  return m;
+}, { virtual: true });
+
 import request from 'supertest';
-import { createApp } from '../../app';
+import { createApp } from '../app';
 
 const app = createApp();
 

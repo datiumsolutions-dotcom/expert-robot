@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import type { Router as ExpressRouter } from 'express';
 import { customersController } from './customers.controller';
 
-export const customersRouter = Router();
+export const customersRouter: ExpressRouter = Router();
 
 // GET /api/v1/customers
 customersRouter.get('/', customersController.list);

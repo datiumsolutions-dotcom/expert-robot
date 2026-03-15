@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import type { Router as ExpressRouter } from 'express';
 import { ordersController } from './orders.controller';
 
-export const ordersRouter = Router();
+export const ordersRouter: ExpressRouter = Router();
 
 // GET /api/v1/orders
 ordersRouter.get('/', ordersController.list);

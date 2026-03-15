@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { importController } from './import.controller';
 
-export const importRouter = Router();
+export const importRouter: ExpressRouter = Router();
 
 const maxSizeMB = Number(process.env['UPLOAD_MAX_SIZE_MB'] ?? 10);
 const upload = multer({
