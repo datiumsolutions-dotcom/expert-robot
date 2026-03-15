@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import type { Router as ExpressRouter } from 'express';
 import multer from 'multer';
 import { importController } from './import.controller';
 

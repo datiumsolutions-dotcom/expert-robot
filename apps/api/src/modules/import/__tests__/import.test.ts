@@ -1,6 +1,5 @@
 import { calculatePoints } from '../import.processor';
-import { normalizePhone, normalizeEmail } from '../../../../../../packages/utils/src/phoneNormalizer';
-import { parseAmount, parseSaleDate, mapOrderStatus, parseCsvBuffer } from '../../../../../../packages/utils/src/csvParser';
+import { normalizePhone, normalizeEmail, parseAmount, parseSaleDate, mapOrderStatus, parseCsvBuffer } from '@loyalty/utils';
 
 describe('normalizePhone', () => {
   it('normalizes with area code formatting', () => {

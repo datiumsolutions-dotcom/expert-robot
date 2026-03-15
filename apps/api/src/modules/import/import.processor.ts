@@ -1,6 +1,5 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { parseCsvBuffer, parseAmount, parseSaleDate, mapOrderStatus, mapSaleType, normalizeEmail, normalizePhone } from '@loyalty/utils';
-import { assignPointsForOrder, reversePointsForOrder, calculatePoints as calculatePointsEngine } from '../points/points.engine';
 
 export interface ImportReport {
   total_rows: number;
@@ -14,7 +13,8 @@ export interface ImportReport {
 }
 
 export function calculatePoints(totalAmount: number, amountPerPoint: number): number {
-  return calculatePointsEngine(totalAmount, amountPerPoint);
+  if (amountPerPoint <= 0) return 0;
+  return Math.floor(totalAmount / amountPerPoint);
 }
 
 export async function processImport(prisma: PrismaClient, orgId: string, csvBuffer: Buffer): Promise<ImportReport> {
@@ -73,16 +73,48 @@ export async function processImport(prisma: PrismaClient, orgId: string, csvBuff
       if (existingOrder) {
         report.skipped_duplicate += 1;
 
-        if (status === 'cancelled' && existingOrder.status !== 'cancelled') {
-          const reversalResult = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            const result = await reversePointsForOrder(tx, orgId, existingOrder.id);
-            await tx.loyaltyOrder.update({ where: { id: existingOrder.id }, data: { status } });
-            return result;
+        if (
+          status === 'cancelled' &&
+          existingOrder.status !== 'cancelled' &&
+          existingOrder.points_processed_at &&
+          existingOrder.customer_id &&
+          existingOrder.points_earned > 0
+        ) {
+          await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const customer = await tx.loyaltyCustomer.findFirst({
+              where: { id: existingOrder.customer_id, organization_id: orgId },
+            });
+            if (!customer) return;
+
+            const currentBalance = customer.total_points;
+            const revertPoints = Math.min(currentBalance, existingOrder.points_earned);
+            const nextBalance = currentBalance - revertPoints;
+
+            await tx.loyaltyTransaction.create({
+              data: {
+                organization_id: orgId,
+                customer_id: customer.id,
+                order_id: existingOrder.id,
+                type: 'refund',
+                points: -revertPoints,
+                balance_before: currentBalance,
+                balance_after: nextBalance,
+                description: `Import cancellation reversal for order ${externalOrderId}`,
+              },
+            });
+
+            await tx.loyaltyCustomer.update({
+              where: { id: customer.id },
+              data: { total_points: nextBalance },
+            });
+
+            await tx.loyaltyOrder.update({
+              where: { id: existingOrder.id },
+              data: { status },
+            });
           });
 
-          if (!reversalResult.skipped_reason && reversalResult.points_reversed > 0) {
-            report.cancelled_reversed += 1;
-          }
+          report.cancelled_reversed += 1;
         }
 
         continue;
@@ -148,10 +180,48 @@ export async function processImport(prisma: PrismaClient, orgId: string, csvBuff
       report.inserted += 1;
 
       if (status === 'completed' && matchedCustomerId) {
-        const assignment = await prisma.$transaction(async (tx: Prisma.TransactionClient) =>
-          assignPointsForOrder(tx, orgId, createdOrder.id, matchedCustomerId, totalAmount, amountPerPoint),
-        );
-        report.points_assigned += assignment.points_assigned;
+        const points = calculatePoints(totalAmount, amountPerPoint);
+        const processedAt = new Date();
+
+        if (points > 0) {
+          await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const customer = await tx.loyaltyCustomer.findUnique({ where: { id: matchedCustomerId! } });
+            if (!customer) return;
+
+            const balanceBefore = customer.total_points;
+            const balanceAfter = balanceBefore + points;
+
+            await tx.loyaltyTransaction.create({
+              data: {
+                organization_id: orgId,
+                customer_id: matchedCustomerId!,
+                order_id: createdOrder.id,
+                type: 'earn',
+                points,
+                balance_before: balanceBefore,
+                balance_after: balanceAfter,
+                description: `Import earn for order ${externalOrderId}`,
+              },
+            });
+
+            await tx.loyaltyCustomer.update({
+              where: { id: matchedCustomerId! },
+              data: { total_points: { increment: points } },
+            });
+
+            await tx.loyaltyOrder.update({
+              where: { id: createdOrder.id },
+              data: { points_earned: points, points_processed_at: processedAt },
+            });
+          });
+
+          report.points_assigned += points;
+        } else {
+          await prisma.loyaltyOrder.update({
+            where: { id: createdOrder.id },
+            data: { points_processed_at: processedAt },
+          });
+        }
       }
 
       if (status === 'cancelled') {
